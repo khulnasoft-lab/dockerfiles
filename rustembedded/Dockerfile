@@ -12,6 +12,7 @@ LABEL maintainer="Md Sulaiman <dev.sulaiman@icloud.com>"
 # Ruby gems
 COPY Gemfile .
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN set -ex;                                      \
     tempPkgs='                                    \
         automake                                  \

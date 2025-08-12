@@ -1,0 +1,58 @@
+## FINAL IMAGE ##
+
+# A cache buster just in case of an emergency. Set to random value to
+# bust all caching.
+ARG CACHE_BUSTER=false
+
+ARG BUILD_KUBECTL_IMAGE=
+ARG UBI_IMAGE=
+ARG UBI_MICRO_IMAGE=
+
+FROM ${UBI_MICRO_IMAGE} AS target
+
+FROM ${BUILD_KUBECTL_IMAGE} AS build_kubectl_image
+FROM ${UBI_IMAGE} AS build
+
+ARG CACHE_BUSTER
+
+ARG DNF_OPTS
+ARG DNF_OPTS_ROOT
+ARG DNF_INSTALL_ROOT=/install-root
+
+RUN mkdir -p ${DNF_INSTALL_ROOT}
+COPY --from=target / ${DNF_INSTALL_ROOT}/
+RUN microdnf ${DNF_OPTS} ${DNF_OPTS_ROOT} upgrade --nodocs --best --assumeyes --setopt=install_weak_deps=0 \
+    && microdnf ${DNF_OPTS} ${DNF_OPTS_ROOT} install --best --assumeyes --nodocs --setopt=install_weak_deps=0 openssh openssl gawk \
+    && microdnf ${DNF_OPTS_ROOT} clean all \
+    && rm ${DNF_INSTALL_ROOT}/usr/libexec/openssh/ssh-keysign \
+    && rm -f ${DNF_INSTALL_ROOT}/var/lib/dnf/history*
+
+COPY --from=build_kubectl_image /assets/ ${DNF_INSTALL_ROOT}/
+RUN chmod +x ${DNF_INSTALL_ROOT}/usr/local/bin/{kubectl,yq}
+
+FROM ${UBI_MICRO_IMAGE} AS final
+
+ARG CACHE_BUSTER
+
+ARG KUBECTL_VERSION
+ARG FIPS_MODE=0
+ARG DNF_INSTALL_ROOT=/install-root
+
+LABEL source="https://github.com/khulnasoft/dockerfile/-/tree/master/kubectl" \
+      name="KhulnaSoft kubectl" \
+      maintainer="KhulnaSoft Distribution Team" \
+      vendor="KhulnaSoft" \
+      version=${KUBECTL_VERSION} \
+      release=${KUBECTL_VERSION} \
+      summary="KhulnaSoft kubectl used to configure Kubernetes." \
+      description="KhulnaSoft kubectl used to configure Kubernetes."
+
+COPY --from=build  ${DNF_INSTALL_ROOT}/ /
+
+## Hardening: CIS L1 SCAP
+RUN --mount=type=bind,rw,from=hardening,source=/,target=/hardening \
+    set -ex; for f in /hardening/*.sh; do sh "$f"; done
+
+# Default to non-root user
+USER 65534:65534
+ENV HOME=/tmp/kube

@@ -1,0 +1,27 @@
+#!/bin/bash
+# curl_retry_netfail
+# curl a resource, retrying if we have an odd network failure.
+# calling: curl_retry_netfail "URL" "filename"
+URL="${1}"
+FILENAME="${2}"
+
+me="${BASH_SOURCE[${#BASH_SOURCE[@]} - 1]}"
+exit_code=0
+
+echo "$me: fetching '${FILENAME}' from '${URL}'"
+
+tries=0
+max_retries=${CURL_RETRIES:-6}
+
+while [ $tries -lt $max_retries ]; do
+    tries=$(($tries + 1))
+    echo "$me: attempt # $tries"
+    curl --retry $max_retries --output "${FILENAME}" --fail --silent --show-error --location "${URL}"
+    exit_code=$?
+    echo "$me: attempt # $tries: $exit_code"
+    if [ $exit_code -ne 18 ] && [ $exit_code -ne 92 ] ; then
+        tries=$max_retries
+    fi
+done
+
+exit $exit_code
